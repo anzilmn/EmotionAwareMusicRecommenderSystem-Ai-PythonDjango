@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodJams AI | 2026 Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Montserrat:wght@300;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --spotify-green: #1DB954; --bg: #050505; --card: #121212; }
+        body { font-family: 'Montserrat', sans-serif; background: var(--bg); color: white; margin: 0; }
+        
+        .header { padding: 30px; border-bottom: 1px solid #222; background: rgba(0,0,0,0.9); position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-family: 'Syncopate', sans-serif; font-size: 1.2rem; color: var(--spotify-green); margin: 0; letter-spacing: 4px; }
+
+        .main-layout { display: grid; grid-template-columns: 1fr 400px; gap: 30px; padding: 30px; max-width: 1400px; margin: 0 auto; }
+
+        .viewer-container { background: #000; border-radius: 24px; position: relative; overflow: hidden; border: 2px solid #222; aspect-ratio: 16/9; }
+        #video, #overlay { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+
+        .mood-card { margin-top: 20px; background: var(--card); padding: 20px; border-radius: 20px; border-left: 5px solid var(--spotify-green); }
+        #mood-display { font-family: 'Syncopate', sans-serif; font-size: 2rem; color: var(--spotify-green); display: block; }
+
+        .playlist-container { height: 80vh; overflow-y: auto; padding-right: 10px; }
+        .playlist-container::-webkit-scrollbar { width: 5px; }
+        .playlist-container::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+
+        .song-tile { display: flex; align-items: center; padding: 15px; background: var(--card); border-radius: 12px; margin-bottom: 10px; transition: 0.3s; border: 1px solid transparent; animation: fadeIn 0.4s ease forwards; }
+        .song-tile:hover { background: #1a1a1a; border-color: var(--spotify-green); transform: translateX(5px); }
+        .song-info b { display: block; font-size: 1rem; color: #fff; }
+        .song-info span { font-size: 0.8rem; color: var(--spotify-green); }
+        .play-btn { width: 35px; height: 35px; background: var(--spotify-green); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; color: black; font-size: 12px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MOODJAMS <span style="color:white">PRO AI</span></h1>
+        <div id="engine-mode" style="font-size: 10px; color: #555;">ENGINE: BOOTING...</div>
+    </div>
+
+    <div class="main-layout">
+        <div class="left-col">
+            <div class="viewer-container">
+                <video id="video" autoplay muted playsinline></video>
+                <canvas id="overlay"></canvas>
+            </div>
+            <div class="mood-card">
+                <span style="font-size: 0.7rem; color: #888; letter-spacing: 2px;">CURRENT VIBE</span>
+                <span id="mood-display">DETECTING...</span>
+            </div>
+        </div>
+
+        <div class="right-col">
+            <h3 style="font-family: 'Syncopate'; font-size: 0.8rem; margin-bottom: 20px; color: #888;">UP NEXT FOR YOU</h3>
+            <div id="song-list" class="playlist-container">
+                <p style="color: #444;">Align face to camera...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const moodDisplay = document.getElementById('mood-display');
+        const songList = document.getElementById('song-list');
+        const engineMode = document.getElementById('engine-mode');
+
+        const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+        faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6 });
+
+        faceMesh.onResults((results) => {
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (results.multiFaceLandmarks) {
+                for (const landmarks of results.multiFaceLandmarks) {
+                    drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#1DB95422', lineWidth: 0.5});
+                    drawConnectors(ctx, landmarks, FACEMESH_LIPS, {color: '#1DB954', lineWidth: 2});
+                }
+            }
+        });
+
+        const camera = new Camera(video, { onFrame: async () => { await faceMesh.send({image: video}); }, width: 1280, height: 720 });
+        camera.start();
+
+        async function syncAI() {
+            if (video.videoWidth === 0) return;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth; tempCanvas.height = video.videoHeight;
+            tempCanvas.getContext('2d').drawImage(video, 0, 0);
+            
+            const formData = new FormData();
+            formData.append('image', tempCanvas.toDataURL('image/jpeg', 0.6));
+
+            try {
+                const response = await fetch('/detect/', { method: 'POST', body: formData });
+                const data = await response.json();
+                
+                if (data.emotion) {
+                    moodDisplay.innerText = data.emotion.toUpperCase();
+                    engineMode.innerText = "ENGINE: " + data.mode.toUpperCase();
+                    songList.innerHTML = data.songs.map((s, i) => `
+                        <div class="song-tile" style="animation-delay: ${i * 0.05}s">
+                            <div class="play-btn">▶</div>
+                            <div class="song-info">
+                                <b>${s.name}</b>
+                                <span>${s.artist}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) { console.error("Sync Error"); }
+        }
+
+        // Fast initial check, then steady loop
+        setTimeout(() => { setInterval(syncAI, 3500); }, 2000);
+    </script>
+</body>
+</html>

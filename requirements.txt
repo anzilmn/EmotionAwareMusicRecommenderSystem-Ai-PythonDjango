@@ -1,0 +1,6 @@
+django
+deepface
+tf-keras
+opencv-python
+requests
+numpy
