@@ -1,0 +1,18 @@
+U need api for seeing recommentation song for that do ==
+
+🛠️ How to set it up
+1. Get your API Key
+Go to the Last.fm Create Account page (if you don't have one).
+
+Go to the API Desktop page.
+
+Contact Email: Your email.
+
+Application Name: MoodJams.
+
+Application Description: Emotion-based music recommender.
+
+You will get an API Key. Copy it!
+
+
+put that api in view.py
